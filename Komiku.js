@@ -8,7 +8,11 @@
 
 const BASE_URL = "https://komiku.org";
 
-// 1. Mengambil Daftar Komik Terbaru (Latest Updates)
+// 1. Fungsi utama yang dicari oleh aplikasi (biasanya getList atau getLatestUpdates)
+async function getList(page = 1) {
+  return await getLatestUpdates(page);
+}
+
 async function getLatestUpdates(page = 1) {
   const url = `${BASE_URL}/page/${page}/`;
   const response = await fetch(url);
@@ -87,4 +91,3 @@ async function getChapterImages(chapterUrl) {
 
   return images;
 }
-
