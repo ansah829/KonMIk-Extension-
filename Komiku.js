@@ -1,89 +1,228 @@
 // ID: ext_komiku_id
-// NAME: komiku
+// NAME: Komiku (ID)
 // TYPE: comic
 // VERSION: 1.0.0
-// COLOR: #00D564
-// ICON: icon.png
-// REFERER: https://komiku.org/id/
+// COLOR: #4164B3
+// ICON: https://komiku.org/asset/img/ico.ico
+// REFERER: https://komiku.org/
 
-const KomikuExtension = {
-  name: "Komiku",
-  baseUrl: "https://komiku.org",
+const BASE = 'https://komiku.org';
+const API = 'https://api.komiku.org';
 
-  async getList(page = 1) {
-    const url = `${this.baseUrl}/page/${page}/`;
-    const response = await fetch(url);
-    const html = await response.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
+const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'Referer': `${BASE}/`,
+    'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8'
+};
 
-    const list = [];
-    const items = doc.querySelectorAll(".ls4w .ls4");
+async function fetchHtml(url) {
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+    return await res.text();
+}
 
-    items.forEach((item) => {
-      const titleEl = item.querySelector(".ls4j h3 a");
-      const imgEl = item.querySelector(".ls4v img");
-      const linkEl = item.querySelector(".ls4j a");
+function absoluteUrl(value, base = BASE) {
+    if (!value) return '';
+    const clean = value
+        .replace(/&#038;/g, '&')
+        .replace(/&amp;/g, '&')
+        .replace(/\\\//g, '/');
+    try {
+        return new URL(clean, base).href;
+    } catch (_) {
+        return clean;
+    }
+}
 
-      if (titleEl && linkEl) {
-        list.push({
-          title: titleEl.textContent.trim(),
-          url: linkEl.getAttribute("href"),
-          cover: imgEl ? imgEl.getAttribute("src") : ""
+function decodeHtml(value = '') {
+    return value
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function extractMatch(regex, str, defaultVal = '') {
+    const m = str.match(regex);
+    return m ? decodeHtml(m[1]) : defaultVal;
+}
+
+function extractAll(regex, str) {
+    const matches = [];
+    let m;
+    regex.lastIndex = 0;
+    while ((m = regex.exec(str)) !== null) matches.push(m);
+    return matches;
+}
+
+function firstMeta(html, property) {
+    const re = new RegExp(`<meta[^>]+(?:itemprop|property)=["']${property}["'][^>]+content=["']([^"']+)["']`, 'i');
+    const reverse = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:itemprop|property)=["']${property}["']`, 'i');
+    return extractMatch(re, html) || extractMatch(reverse, html);
+}
+
+function allMeta(html, property) {
+    const values = [];
+    const re = new RegExp(`<meta[^>]+itemprop=["']${property}["'][^>]+content=["']([^"']+)["']`, 'gi');
+    for (const m of extractAll(re, html)) values.push(decodeHtml(m[1]));
+    return [...new Set(values)];
+}
+
+function cleanCover(url) {
+    return absoluteUrl(url).replace(/[?&](?:resize|quality|w|h)=[^&]+/gi, '').replace(/[?&]$/, '');
+}
+
+function parseComicCards(html) {
+    const mangaList = [];
+    const seen = new Set();
+    const cardRegex = /<div\s+class=["']bge["'][\s\S]*?<a\s+href=["']([^"']*\/manga\/[^"']+)["'][^>]*>[\s\S]*?<img\s+([^>]*?)(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/div>\s*<\/div>/gi;
+
+    for (const m of extractAll(cardRegex, html)) {
+        const id = absoluteUrl(m[1]);
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        const imageAttrs = m[2] || '';
+        const lazyImage = extractMatch(/data-src=["']([^"']+)["']/i, imageAttrs) || m[3];
+        const title = decodeHtml(m[4]);
+
+        if (!title || !id) continue;
+        mangaList.push({
+            id,
+            title,
+            cover_url: cleanCover(lazyImage),
+            rating: '10.0',
+            views: '-'
         });
-      }
-    });
+    }
 
-    return list;
-  },
+    // Fallback untuk markup yang berubah: pasangkan link manga dengan h3 terdekat.
+    if (!mangaList.length) {
+        const fallback = /<a\s+href=["']([^"']*\/manga\/[^"']+)["'][^>]*>[\s\S]{0,2500}?<h3[^>]*>([\s\S]*?)<\/h3>/gi;
+        for (const m of extractAll(fallback, html)) {
+            const id = absoluteUrl(m[1]);
+            if (seen.has(id)) continue;
+            seen.add(id);
+            mangaList.push({ id, title: decodeHtml(m[2]), cover_url: '', rating: '10.0', views: '-' });
+        }
+    }
 
-  async getComicDetails(comicUrl) {
-    const response = await fetch(comicUrl);
-    const html = await response.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
+    return mangaList;
+}
 
-    const title = doc.querySelector("h1[itemprop='name']")?.textContent.trim();
-    const cover = doc.querySelector(".ls2l img")?.getAttribute("src");
-    const description = doc.querySelector("p[itemprop='description']")?.textContent.trim();
+var KonmikExtension = {
+    async getList(page, query, filters) {
+        const currentPage = Math.max(1, parseInt(page || 1, 10));
+        const params = new URLSearchParams();
+        if (query) params.set('s', query);
+        if (currentPage > 1) params.set('paged', String(currentPage));
+        if (filters?.type) params.set('tipe', filters.type);
+        if (filters?.orderby) params.set('orderby', filters.orderby);
 
-    const chapters = [];
-    const chapterElements = doc.querySelectorAll("#Daftar_Chapter tr");
+        const url = `${API}/manga/${params.toString() ? `?${params.toString()}` : '?orderby=date'}`;
+        const html = await fetchHtml(url);
+        return { manga_list: parseComicCards(html) };
+    },
 
-    chapterElements.forEach((el) => {
-      const aTag = el.querySelector(".judulseries a");
-      const dateTag = el.querySelector(".tglseries");
+    async getDetail(urlPath) {
+        const detailUrl = absoluteUrl(urlPath);
+        const html = await fetchHtml(detailUrl);
 
-      if (aTag) {
-        chapters.push({
-          name: aTag.textContent.trim(),
-          url: aTag.getAttribute("href"),
-          releaseDate: dateTag ? dateTag.textContent.trim() : ""
-        });
-      }
-    });
+        const title = firstMeta(html, 'og:title')
+            || extractMatch(/<h1[^>]*>[\s\S]*?<span[^>]*itemprop=["']name["'][^>]*>([\s\S]*?)<\/span>/i, html)
+            || extractMatch(/<h1[^>]*>([\s\S]*?)<\/h1>/i, html, 'Unknown Title')
+                .replace(/^Komik\s*/i, '').trim();
+        const normalizedTitle = title.replace(/^Komik\s+/i, '').trim();
 
-    return {
-      title,
-      cover,
-      description,
-      chapters
-    };
-  },
+        const description = firstMeta(html, 'description')
+            || extractMatch(/<p[^>]*class=["'][^"']*desc[^"']*["'][^>]*>([\s\S]*?)<\/p>/i, html, 'Tidak ada deskripsi.');
 
-  async getChapterImages(chapterUrl) {
-    const response = await fetch(chapterUrl);
-    const html = await response.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
+        const cover = cleanCover(firstMeta(html, 'og:image')
+            || extractMatch(/<img[^>]+itemprop=["']image["'][^>]+src=["']([^"']+)["']/i, html));
 
-    const images = [];
-    const imgElements = doc.querySelectorAll("#Baca_Komik img");
+        const author = extractMatch(/<span[^>]*itemprop=["']author["'][\s\S]*?<meta[^>]*itemprop=["']name["'][^>]*content=["']([^"']+)["']/i, html, 'Kreator');
+        const genres = allMeta(html, 'genre');
+        const type = extractMatch(/<td[^>]*>\s*Tipe:\s*<\/td>\s*<td[^>]*>(?:<strong>)?([^<]+)/i, html, 'Comic');
 
-    imgElements.forEach((img) => {
-      const src = img.getAttribute("src");
-      if (src) {
-        images.push(src.trim());
-      }
-    });
+        const chapters = [];
+        const chapterRegex = /<tr[^>]*itemprop=["']itemListElement["'][\s\S]*?<a\s+href=["']([^"']+)["'][^>]*>[\s\S]*?<span[^>]*itemprop=["']name["'][^>]*>[\s\S]*?<b>([^<]+)<\/b>[\s\S]*?<\/a>[\s\S]*?<td[^>]*class=["']tanggalseries["'][^>]*>([^<]*)<\/td>[\s\S]*?<\/tr>/gi;
 
-    return images;
-  }
+        for (const m of extractAll(chapterRegex, html)) {
+            const chapterTitle = decodeHtml(m[2]);
+            const numberMatch = chapterTitle.match(/(?:chapter|ch)\s*([\d.\-]+)/i);
+            chapters.push({
+                id: absoluteUrl(m[1]),
+                title: chapterTitle || 'Chapter',
+                date: decodeHtml(m[3]) || '-',
+                number: numberMatch ? parseFloat(numberMatch[1]) : 0
+            });
+        }
+
+        // Fallback untuk halaman lama yang tidak memakai itemprop.
+        if (!chapters.length) {
+            const fallbackRegex = /<a\s+href=["']([^"']*chapter[^"']+)["'][^>]*[^>]*>\s*(?:<span[^>]*>[^<]*<\/span>)?\s*(?:<span[^>]*>)?([^<]+)(?:<\/span>)?\s*<\/a>/gi;
+            const seen = new Set();
+            for (const m of extractAll(fallbackRegex, html)) {
+                const id = absoluteUrl(m[1]);
+                if (seen.has(id)) continue;
+                seen.add(id);
+                const chapterTitle = decodeHtml(m[2]);
+                const numberMatch = chapterTitle.match(/(?:chapter|ch)\s*([\d.\-]+)/i);
+                chapters.push({ id, title: chapterTitle, date: '-', number: numberMatch ? parseFloat(numberMatch[1]) : 0 });
+            }
+        }
+
+        chapters.sort((a, b) => b.number - a.number);
+        chapters.forEach(chapter => delete chapter.number);
+
+        return {
+            title: normalizedTitle || title,
+            cover_url: cover,
+            description,
+            rating: '10.0',
+            views: '-',
+            genres: genres.length ? genres : [type],
+            author,
+            artist: author,
+            chapters
+        };
+    },
+
+    async getChapterImages(chapterUrl) {
+        const html = await fetchHtml(absoluteUrl(chapterUrl));
+        const images = [];
+        const seen = new Set();
+
+        const imageRegex = /<img\b([^>]*?(?:class=["'][^"']*(?:klazy|ww)[^"']*|alt=["'][^"']*(?:gambar|image)[^"']*)[^>]*)>/gi;
+        for (const m of extractAll(imageRegex, html)) {
+            const attrs = m[1];
+            const image = extractMatch(/(?:data-src|data-lazy-src|src)=["']([^"']+)["']/i, attrs);
+            const url = absoluteUrl(image, chapterUrl);
+            if (!url || /lazy\.jpg|promosi|avatar|google\.svg/i.test(url) || seen.has(url)) continue;
+            seen.add(url);
+            images.push(url);
+        }
+
+        // Fallback: chapterData menyediakan jumlah gambar, sedangkan URL gambar
+        // tetap ditemukan dari markup img pada halaman pembaca.
+        if (!images.length) {
+            const genericImageRegex = /<img\b([^>]+)>/gi;
+            for (const m of extractAll(genericImageRegex, html)) {
+                const image = extractMatch(/(?:data-src|src)=["']([^"']+)["']/i, m[1]);
+                const url = absoluteUrl(image, chapterUrl);
+                if (url && /img\.komiku\./i.test(url) && !seen.has(url)) {
+                    seen.add(url);
+                    images.push(url);
+                }
+            }
+        }
+
+        return images;
+    }
 };
