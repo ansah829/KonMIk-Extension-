@@ -1,7 +1,7 @@
-// ID: ext_24comic_id
+// ID: ext_24comic_id_v2
 // NAME: 24Comic (ID)
 // TYPE: comic
-// VERSION: 1.0.0
+// VERSION: 2.0.0
 // COLOR: #2563EB
 // ICON: https://www.24comic.com/logo.png
 // REFERER: https://www.24comic.com/
@@ -11,115 +11,140 @@ const IMAGE_API = API + '/public/images/';
 const headers = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36',
     'Referer': 'https://www.24comic.com/',
-    'Accept': 'application/json'
+    'Accept': 'application/json, text/plain, */*'
 };
 
 async function fetchJson(url) {
-    const res = await fetch(url, { headers: headers });
-    if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + url);
-    return await res.json();
+    const response = await fetch(url, { headers: headers });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
 }
 
 function imageUrl(value) {
     if (!value) return '';
-    if (/^https?:\/\//i.test(String(value))) return String(value);
-    return IMAGE_API + encodeURIComponent(String(value)).replace(/%2F/gi, '/');
+    var valueText = String(value);
+    if (/^https?:\/\//i.test(valueText)) return valueText;
+    return IMAGE_API + encodeURIComponent(valueText).replace(/%2F/gi, '/');
 }
 
-function safeNumber(value, fallback) {
-    var n = Number(value);
-    return isNaN(n) ? (fallback || 0) : n;
+function toArray(value) {
+    if (Array.isArray(value)) return value;
+    if (value && Array.isArray(value.results)) return value.results;
+    if (value && Array.isArray(value.items)) return value.items;
+    if (value && Array.isArray(value.comics)) return value.comics;
+    return [];
 }
 
-function parseId(value) {
+function getComicId(value) {
     if (value === null || value === undefined) return '';
-    var raw = String(value);
-    var match = raw.match(/(?:comic|chapter)[^0-9]*([0-9]+)/i);
-    return match ? match[1] : raw.replace(/[^0-9]/g, '') || raw;
+    var text = String(value);
+    var match = text.match(/(?:comic|manga)[^0-9]*([0-9]+)/i);
+    if (match) return match[1];
+    return text.replace(/[^0-9]/g, '') || text;
 }
 
-function asArray(value) {
-    return Array.isArray(value) ? value : [];
-}
-
-function comicToItem(comic) {
+function comicItem(comic) {
     return {
-        id: String(comic.comic_id),
-        title: comic.title || 'Untitled',
-        cover_url: imageUrl(comic.cover || comic.image),
-        rating: comic.likes ? String(comic.likes) : '0',
-        views: comic.views !== undefined ? String(comic.views) : '-'
+        id: String(comic.comic_id || comic.id || comic._id || ''),
+        title: String(comic.title || comic.name || 'Untitled'),
+        cover_url: imageUrl(comic.cover || comic.image || comic.thumbnail),
+        rating: String(comic.likes !== undefined ? comic.likes : (comic.rating || '0')),
+        views: String(comic.views !== undefined ? comic.views : '-')
     };
+}
+
+function matchesSearch(comic, query) {
+    if (!query) return true;
+    var text = [comic.title, comic.name, comic.description, comic.genre, comic.subgenres].join(' ').toLowerCase();
+    return text.indexOf(query) !== -1;
 }
 
 var KonmikExtension = {
     async getList(page, query, filters) {
-        var currentPage = Math.max(1, parseInt(page || 1, 10));
-        var skip = (currentPage - 1) * 50;
-        var url = API + '/r/comics?skip=' + skip + '&limit=50&order_by=created_at::desc';
-        var response = await fetchJson(url);
-        var comics = asArray(response.data);
-        var search = query ? String(query).toLowerCase().trim() : '';
+        var pageNumber = parseInt(page, 10);
+        if (!pageNumber || pageNumber < 1) pageNumber = 1;
 
-        if (search) {
+        var searchText = typeof query === 'string' ? query.trim().toLowerCase() : '';
+        var comics = [];
+
+        // API 24Comic belum memiliki parameter search. Untuk pencarian, ambil beberapa
+        // halaman katalog agar judul lama tetap bisa ditemukan.
+        if (searchText) {
+            var requests = [];
+            for (var searchPage = 0; searchPage < 10; searchPage++) {
+                requests.push(fetchJson(API + '/r/comics?skip=' + (searchPage * 100) + '&limit=100&order_by=created_at::desc'));
+            }
+            var responses = await Promise.all(requests);
+            responses.forEach(function (payload) {
+                comics = comics.concat(toArray(payload && payload.data));
+            });
+            comics = comics.filter(function (comic) { return matchesSearch(comic, searchText); });
+        } else {
+            var skip = (pageNumber - 1) * 100;
+            var url = API + '/r/comics?skip=' + skip + '&limit=100&order_by=created_at::desc';
+            var payload = await fetchJson(url);
+            comics = toArray(payload && payload.data);
+        }
+
+        var genre = filters && typeof filters.genre === 'string' ? filters.genre.trim().toLowerCase() : '';
+        if (genre) {
             comics = comics.filter(function (comic) {
-                var haystack = [comic.title, comic.description, comic.genre, comic.subgenres].join(' ').toLowerCase();
-                return haystack.indexOf(search) !== -1;
+                var genres = [comic.genre, comic.subgenres].join(',').toLowerCase();
+                return genres.indexOf(genre) !== -1;
             });
         }
 
-        if (filters && filters.genre) {
-            var genre = String(filters.genre).toLowerCase();
-            comics = comics.filter(function (comic) {
-                return String(comic.genre || '').toLowerCase() === genre || String(comic.subgenres || '').toLowerCase().indexOf(genre) !== -1;
-            });
-        }
-
-        return { manga_list: comics.map(comicToItem) };
+        var seen = {};
+        var result = [];
+        comics.forEach(function (comic) {
+            var item = comicItem(comic);
+            if (!item.id || seen[item.id]) return;
+            seen[item.id] = true;
+            result.push(item);
+        });
+        return { manga_list: result };
     },
 
     async getDetail(comicId) {
-        var id = parseId(comicId);
+        var id = getComicId(comicId);
         if (!id) throw new Error('ID komik tidak ditemukan');
 
-        var comicResponse = await fetchJson(API + '/r/comics/' + encodeURIComponent(id));
-        var comic = comicResponse.data || {};
-        var chapterResponse = await fetchJson(API + '/r/comics/' + encodeURIComponent(id) + '/chapters?skip=0&limit=100&order_by=created_at::desc');
-        var chapterData = chapterResponse.data || {};
-        var rawChapters = asArray(chapterData.results || chapterData);
+        var comicPayload = await fetchJson(API + '/r/comics/' + encodeURIComponent(id));
+        var comic = comicPayload && comicPayload.data ? comicPayload.data : {};
+        var chapterPayload = await fetchJson(API + '/r/comics/' + encodeURIComponent(id) + '/chapters?skip=0&limit=100&order_by=created_at::desc');
+        var chapterList = toArray(chapterPayload && chapterPayload.data);
 
-        var chapters = rawChapters.map(function (chapter) {
-            var chapterNo = chapter.chapter_no;
-            var chapterTitle = chapter.title || (chapterNo !== null && chapterNo !== undefined ? 'Chapter ' + chapterNo : 'Chapter');
+        var chapters = chapterList.map(function (chapter) {
             return {
-                id: String(chapter.chapter_id),
-                title: chapterTitle,
-                date: chapter.published_at || chapter.created_at || '-',
-                number: chapterNo === null || chapterNo === undefined ? 0 : safeNumber(chapterNo, 0)
+                id: String(chapter.chapter_id || chapter.id),
+                title: String(chapter.title || chapter.subtitle || 'Chapter'),
+                date: String(chapter.published_at || chapter.created_at || '-'),
+                _number: chapter.chapter_no === null || chapter.chapter_no === undefined ? -1 : Number(chapter.chapter_no)
             };
-        });
+        }).filter(function (chapter) { return chapter.id && chapter.id !== 'undefined'; });
 
         chapters.sort(function (a, b) {
-            if (a.number !== b.number) return b.number - a.number;
-            return String(b.date).localeCompare(String(a.date));
+            if (a._number !== b._number) return b._number - a._number;
+            return b.date.localeCompare(a.date);
         });
-        chapters.forEach(function (chapter) { delete chapter.number; });
+        chapters.forEach(function (chapter) { delete chapter._number; });
 
         var genres = [];
-        if (comic.genre) genres.push(String(comic.genre));
-        String(comic.subgenres || '').split(',').forEach(function (genre) {
-            var value = genre.trim();
-            if (value && genres.indexOf(value) === -1) genres.push(value);
+        [comic.genre, comic.subgenres].forEach(function (value) {
+            String(value || '').split(',').forEach(function (genre) {
+                genre = genre.trim();
+                if (genre && genres.indexOf(genre) < 0) genres.push(genre);
+            });
         });
         if (!genres.length) genres.push('Comic');
 
         var author = comic.author && comic.author.fullname ? comic.author.fullname : 'Kreator';
         return {
-            title: comic.title || 'Unknown Title',
+            title: String(comic.title || 'Unknown Title'),
             cover_url: imageUrl(comic.cover || comic.image),
-            description: comic.description || 'Tidak ada deskripsi.',
-            rating: comic.likes !== undefined ? String(comic.likes) : '0',
-            views: comic.views !== undefined ? String(comic.views) : '-',
+            description: String(comic.description || 'Tidak ada deskripsi.'),
+            rating: String(comic.likes !== undefined ? comic.likes : '0'),
+            views: String(comic.views !== undefined ? comic.views : '-'),
             genres: genres,
             author: author,
             artist: author,
@@ -128,22 +153,17 @@ var KonmikExtension = {
     },
 
     async getChapterImages(chapterId) {
-        var id = parseId(chapterId);
+        var id = getComicId(chapterId);
         if (!id) return [];
-        var response = await fetchJson(API + '/r/chapters/' + encodeURIComponent(id));
-        var chapter = response.data || {};
-        var images = [];
-
-        if (Array.isArray(chapter.images)) {
-            images = chapter.images;
-        } else if (Array.isArray(chapter.pages)) {
-            images = chapter.pages;
-        } else if (chapter.image) {
-            images = [chapter.image];
-        }
-
-        return images.map(imageUrl).filter(function (url, index, array) {
-            return url && array.indexOf(url) === index;
+        var payload = await fetchJson(API + '/r/chapters/' + encodeURIComponent(id));
+        var chapter = payload && payload.data ? payload.data : {};
+        var pages = Array.isArray(chapter.images) ? chapter.images : (Array.isArray(chapter.pages) ? chapter.pages : []);
+        if (!pages.length && chapter.image) pages = [chapter.image];
+        var seen = {};
+        return pages.map(imageUrl).filter(function (url) {
+            if (!url || seen[url]) return false;
+            seen[url] = true;
+            return true;
         });
     }
 };
