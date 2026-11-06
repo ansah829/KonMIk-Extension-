@@ -119,13 +119,14 @@ function parseComicCards(html) {
 var KonmikExtension = {
     async getList(page, query, filters) {
         const currentPage = Math.max(1, parseInt(page || 1, 10));
-        const params = new URLSearchParams();
-        if (query) params.set('s', query);
-        if (currentPage > 1) params.set('paged', String(currentPage));
-        if (filters?.type) params.set('tipe', filters.type);
-        if (filters?.orderby) params.set('orderby', filters.orderby);
+        const params = [];
+        if (query) params.push('s=' + encodeURIComponent(query));
+        if (currentPage > 1) params.push('paged=' + encodeURIComponent(String(currentPage)));
+        if (filters && filters.type) params.push('tipe=' + encodeURIComponent(filters.type));
+        if (filters && filters.orderby) params.push('orderby=' + encodeURIComponent(filters.orderby));
 
-        const url = `${API}/manga/${params.toString() ? `?${params.toString()}` : '?orderby=date'}`;
+        const queryString = params.length ? '?' + params.join('&') : '?orderby=date';
+        const url = `${API}/manga/${queryString}`;
         const html = await fetchHtml(url);
         return { manga_list: parseComicCards(html) };
     },
