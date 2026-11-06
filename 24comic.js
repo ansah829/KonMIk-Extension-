@@ -44,8 +44,9 @@ function getComicId(value) {
 }
 
 function comicItem(comic) {
+    var comicId = String(comic.comic_id || comic.id || comic._id || '');
     return {
-        id: String(comic.comic_id || comic.id || comic._id || ''),
+        id: 'https://www.24comic.com/comics/' + comicId,
         title: String(comic.title || comic.name || 'Untitled'),
         cover_url: imageUrl(comic.cover || comic.image || comic.thumbnail),
         rating: String(comic.likes !== undefined ? comic.likes : (comic.rating || '0')),
@@ -115,8 +116,9 @@ var KonmikExtension = {
         var chapterList = toArray(chapterPayload && chapterPayload.data);
 
         var chapters = chapterList.map(function (chapter) {
+            var chapterId = String(chapter.chapter_id || chapter.id || '');
             return {
-                id: String(chapter.chapter_id || chapter.id),
+                id: 'https://www.24comic.com/chapters/' + chapterId,
                 title: String(chapter.title || chapter.subtitle || 'Chapter'),
                 date: String(chapter.published_at || chapter.created_at || '-'),
                 _number: chapter.chapter_no === null || chapter.chapter_no === undefined ? -1 : Number(chapter.chapter_no)
