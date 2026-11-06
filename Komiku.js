@@ -1,7 +1,7 @@
-// ID: ext_komiku_id
+// ID: ext_komiku_id_v2
 // NAME: Komiku (ID)
 // TYPE: comic
-// VERSION: 1.0.0
+// VERSION: 1.0.1
 // COLOR: #4164B3
 // ICON: https://komiku.org/asset/img/ico.ico
 // REFERER: https://komiku.org/
