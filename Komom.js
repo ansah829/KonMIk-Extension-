@@ -1,7 +1,7 @@
-// ID: ext_komikdewasa_html_reader_fast
-// NAME: Komik Dewasa Reader Fast (ID)
+// ID: ext_komikdewasa_rest_reader_fast
+// NAME: Komik Dewasa REST Reader (ID)
 // TYPE: comic
-// VERSION: 3.3.0
+// VERSION: 4.0.0
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
@@ -18,5 +18,5 @@ function imgs(html){var out=[],seen=[],re=/<img\b([^>]+)>/gi;all(re,html).forEac
 var KonmikExtension={
  getList:async function(page,query,filters){var u=BASE+'/?orderby=date';if(query)u=BASE+'/?s='+encodeURIComponent(String(query));var h=await getText(u);return{manga_list:cards(h)};},
  getDetail:async function(id){var h=await getText(abs(id)),tm=h.match(/<h1[^>]+class=["'][^"']*entry-title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i)||h.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i),dm=h.match(/<meta[^>]+(?:name|property)=["']og:description["'][^>]+content=["']([^"']+)/i),cm=h.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i),cs=[],seen=[];var re=/<a[^>]+href=["']([^"']*(?:chapter|ch)[^"']*)["'][^>]*>([\s\S]{0,700}?)<\/a>/gi;all(re,h).forEach(function(m){var x=abs(m[1]);if(seen.indexOf(x)>=0)return;seen.push(x);cs.push({id:x,title:txt(m[2])||'Chapter',date:'-'});});return{title:txt(tm?tm[1]:'Komik Dewasa'),cover_url:cm?abs(cm[1]):'',description:dm?txt(dm[1]):'Tidak ada deskripsi.',rating:'10.0',views:'-',genres:['Manga'],author:'Kreator',artist:'Kreator',chapters:cs};},
- getChapterImages:async function(id){var h=await Promise.race([getText(abs(id)),new Promise(function(_,reject){setTimeout(function(){reject(new Error('Timeout membaca chapter'));},15000);})]);return imgs(h);}
+ getChapterImages:async function(id){var m=String(id||'').match(/\/([^/?#]+)\/?$/);if(!m)return [];var u=BASE+'/?rest_route=/wp/v2/posts&slug='+encodeURIComponent(m[1]);var h=await Promise.race([getText(u),new Promise(function(_,reject){setTimeout(function(){reject(new Error('Timeout membaca chapter'));},15000);})]);var p=JSON.parse(h);return p&&p[0]&&p[0].content?imgs(p[0].content.rendered):[];}
 };
