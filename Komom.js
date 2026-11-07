@@ -1,162 +1,61 @@
-// ID: ext_komikdewasa_api_lite_v201
-// NAME: Komik Dewasa API Lite (ID)
+// ID: ext_komikdewasa_api_compact
+// NAME: Komik Dewasa API (ID)
 // TYPE: comic
-// VERSION: 2.0.1
+// VERSION: 3.0.0
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
 
 var BASE = 'https://komikdewasa.mom';
-var API = BASE + '/wp-json/wp/v2';
-var headers = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36',
-    'Referer': BASE + '/',
-    'Accept': 'application/json, text/plain, */*'
-};
+var API = BASE + '/wp-json/wp/v2/posts';
+var headers = {'User-Agent':'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36','Referer':BASE+'/','Accept':'application/json, text/plain, */*'};
 
-async function fetchJson(url) {
-    var response = await fetch(url, { headers: headers });
-    if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + url);
-    return await response.json();
+async function getJson(url) {
+    var r = await fetch(url, {headers:headers});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
 }
-
-function htmlText(value) {
-    return String(value || '')
-        .replace(/<br\s*\/?\s*>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&#038;|&amp;/gi, '&')
-        .replace(/&#039;|&#39;|&apos;/gi, "'")
-        .replace(/&quot;/gi, '"')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function abs(value) {
-    if (!value) return '';
-    var url = String(value).replace(/&amp;/g, '&').replace(/^http:\/\//i, 'https://');
-    if (/^https?:\/\//i.test(url)) return url;
-    return BASE + '/' + url.replace(/^\/+/, '');
-}
-
-function postTitle(post) {
-    return htmlText(post && post.title ? post.title.rendered : 'Unknown Title');
-}
-
-function postSlug(post) {
-    return String(post && post.slug ? post.slug : '').toLowerCase();
-}
-
-function seriesSlug(slug) {
-    return slug
-        .replace(/-(?:chapter|chap|ch)[-_]?\d+(?:[-_].*)?$/i, '')
-        .replace(/-(?:chapter|chap|ch)[-_]?\d+$/i, '');
-}
-
-function chapterNumber(title, slug) {
-    var match = String(title + ' ' + slug).match(/(?:chapter|chap|ch)[^0-9]*([0-9]+)/i);
-    return match ? parseFloat(match[1]) : 0;
-}
-
-function firstImage(html) {
-    var match = String(html || '').match(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["'][^>]*>/i);
-    return match ? abs(match[1]) : '';
-}
-
-function allImages(html) {
-    var result = [];
-    var seen = [];
-    var regex = /<img\b([^>]+)>/gi;
-    var match;
-    while ((match = regex.exec(String(html || ''))) !== null) {
-        var src = match[1].match(/(?:src|data-src|data-lazy-src)=["']([^"']+)["']/i);
-        if (!src) continue;
-        var url = abs(src[1]).split('?')[0];
-        if (!/\.(?:jpg|jpeg|png|webp|avif|gif)$/i.test(url)) continue;
-        if (/logo|avatar|banner|sponsor|promosi|favicon/i.test(url)) continue;
-        if (seen.indexOf(url) >= 0) continue;
-        seen.push(url);
-        result.push(url);
+function text(v) { return String(v || '').replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&#038;/g,'&').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim(); }
+function slugOf(p) { return String(p.slug || '').toLowerCase(); }
+function series(s) { return s.replace(/-(?:chapter|chap|ch)[-_]?\d+(?:[-_].*)?$/i,''); }
+function titleOf(p) { return text(p.title && p.title.rendered); }
+function imageOf(html) { var m=String(html||'').match(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["']/i); return m ? String(m[1]).replace(/^http:\/\//i,'https://') : ''; }
+function imagesOf(html) {
+    var out=[],seen=[],re=/<img\b([^>]+)>/gi,m,x,u;
+    while ((m=re.exec(String(html||''))) !== null) {
+        x=m[1].match(/(?:src|data-src|data-lazy-src)=["']([^"']+)["']/i); if(!x) continue;
+        u=String(x[1]).replace(/^http:\/\//i,'https://').split('?')[0];
+        if(!/\.(jpg|jpeg|png|webp|avif|gif)$/i.test(u)||/logo|avatar|banner|promo|sponsor|favicon/i.test(u)||seen.indexOf(u)>=0) continue;
+        seen.push(u); out.push(u);
     }
-    return result;
+    return out;
 }
-
-function makeItem(slug, post) {
-    var title = postTitle(post).replace(/\s+(?:chapter|chap|ch)[^\d]*[\d.\-]+.*$/i, '').trim();
-    return {
-        id: BASE + '/komik/' + slug + '/',
-        title: title || postTitle(post),
-        cover_url: firstImage(post && post.content ? post.content.rendered : ''),
-        rating: '10.0',
-        views: '-'
-    };
+function item(s,p) {
+    var t=titleOf(p).replace(/\s+(chapter|chap|ch)[^\d]*[\d.\-]+.*$/i,'').trim();
+    return {id:BASE+'/komik/'+s+'/',title:t||titleOf(p),cover_url:imageOf(p.content&&p.content.rendered),rating:'10.0',views:'-'};
 }
 
 var KonmikExtension = {
-    async getList(page, query, filters) {
-        var currentPage = parseInt(page || 1, 10);
-        if (!currentPage || currentPage < 1) currentPage = 1;
-        var url = API + '/posts?per_page=100&page=' + currentPage + '&orderby=date&order=desc';
-        if (query) url += '&search=' + encodeURIComponent(String(query));
-        var posts = await fetchJson(url);
-        var result = [];
-        var seen = [];
-        (Array.isArray(posts) ? posts : []).forEach(function (post) {
-            var slug = seriesSlug(postSlug(post));
-            if (!slug || seen.indexOf(slug) >= 0) return;
-            seen.push(slug);
-            result.push(makeItem(slug, post));
-        });
-        return { manga_list: result };
+    async getList(page,query,filters) {
+        var u=API+'?per_page=100&orderby=date&order=desc';
+        if(query) u+='&search='+encodeURIComponent(String(query));
+        var ps=await getJson(u),out=[],seen=[];
+        (ps||[]).forEach(function(p){var s=series(slugOf(p));if(s&&seen.indexOf(s)<0){seen.push(s);out.push(item(s,p));}});
+        return {manga_list:out};
     },
-
-    async getDetail(urlPath) {
-        var raw = String(urlPath || '');
-        var match = raw.match(/\/komik\/([^/?#]+)/i);
-        var slug = match ? match[1] : raw.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
-        var searchWords = seriesSlug(slug).replace(/-/g, ' ').trim().split(/\s+/);
-        var search = searchWords[0] || seriesSlug(slug).replace(/-/g, ' ');
-        var posts = await fetchJson(API + '/posts?per_page=100&search=' + encodeURIComponent(search) + '&orderby=date&order=desc');
-        var filtered = (Array.isArray(posts) ? posts : []).filter(function (post) {
-            return seriesSlug(postSlug(post)) === seriesSlug(slug);
-        });
-        if (!filtered.length) {
-            var recent = await fetchJson(API + '/posts?per_page=100&orderby=date&order=desc');
-            filtered = (Array.isArray(recent) ? recent : []).filter(function (post) {
-                return seriesSlug(postSlug(post)) === seriesSlug(slug);
-            });
-        }
-        var first = filtered[0] || {};
-        var title = postTitle(first).replace(/\s+(?:chapter|chap|ch)[^\d]*[\d.\-]+.*$/i, '').trim() || htmlText(slug.replace(/-/g, ' '));
-        var chapters = filtered.map(function (post) {
-            return {
-                id: post.link || (BASE + '/' + post.slug + '/'),
-                title: postTitle(post),
-                date: post.date || '-',
-                _number: chapterNumber(postTitle(post), postSlug(post))
-            };
-        });
-        chapters.sort(function (a, b) { return b._number - a._number; });
-        chapters.forEach(function (chapter) { delete chapter._number; });
-        return {
-            title: title,
-            cover_url: firstImage(first.content ? first.content.rendered : ''),
-            description: 'Komik Dewasa Bahasa Indonesia.',
-            rating: '10.0',
-            views: '-',
-            genres: ['Manga'],
-            author: 'Kreator',
-            artist: 'Kreator',
-            chapters: chapters
-        };
+    async getDetail(id) {
+        var m=String(id||'').match(/\/komik\/([^/?#]+)/i),s=m?m[1]:'';
+        var word=series(s).replace(/-/g,' ').split(/\s+/)[0]||s;
+        var ps=await getJson(API+'?per_page=100&search='+encodeURIComponent(word)+'&orderby=date&order=desc');
+        ps=(ps||[]).filter(function(p){return series(slugOf(p))===series(s);});
+        if(!ps.length){var recent=await getJson(API+'?per_page=100&orderby=date&order=desc');ps=(recent||[]).filter(function(p){return series(slugOf(p))===series(s);});}
+        var first=ps[0]||{},cs=ps.map(function(p){return{id:p.link||BASE+'/'+p.slug+'/',title:titleOf(p),date:p.date||'-',n:(titleOf(p)+' '+slugOf(p)).match(/(?:chapter|chap|ch)[^0-9]*([0-9]+)/i)};});
+        cs.forEach(function(c){c.n=c.n?parseFloat(c.n[1]):0;}); cs.sort(function(a,b){return b.n-a.n;}); cs.forEach(function(c){delete c.n;});
+        return {title:titleOf(first).replace(/\s+(chapter|chap|ch)[^\d]*[\d.\-]+.*$/i,'')||text(s.replace(/-/g,' ')),cover_url:imageOf(first.content&&first.content.rendered),description:'Komik Dewasa Bahasa Indonesia.',rating:'10.0',views:'-',genres:['Manga'],author:'Kreator',artist:'Kreator',chapters:cs};
     },
-
-    async getChapterImages(chapterUrl) {
-        var slugMatch = String(chapterUrl || '').match(/\/([^/?#]+)\/?(?:[?#].*)?$/);
-        var slug = slugMatch ? slugMatch[1] : '';
-        if (!slug) return [];
-        var posts = await fetchJson(API + '/posts?slug=' + encodeURIComponent(slug));
-        var post = Array.isArray(posts) ? posts[0] : null;
-        return post && post.content ? allImages(post.content.rendered) : [];
+    async getChapterImages(id) {
+        var m=String(id||'').match(/\/([^/?#]+)\/?$/); if(!m)return [];
+        var ps=await getJson(API+'?slug='+encodeURIComponent(m[1]));
+        return ps&&ps[0]&&ps[0].content?imagesOf(ps[0].content.rendered):[];
     }
 };
