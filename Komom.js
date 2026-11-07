@@ -1,7 +1,7 @@
-// ID: ext_komikdewasa_proxy_path_reader
-// NAME: Komik Dewasa Proxy Path (ID)
+// ID: ext_komikdewasa_data_reader
+// NAME: Komik Dewasa Data Reader (ID)
 // TYPE: comic
-// VERSION: 6.1.0
+// VERSION: 7.0.0
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
@@ -17,8 +17,10 @@ function all(re,s){var a=[],m;re.lastIndex=0;while((m=re.exec(s))!==null)a.push(
 function cards(html){var out=[],seen=[];var re=/<a[^>]+href=["']([^"']*\/komik\/[^"']+)["'][\s\S]{0,2400}?<div[^>]+class=["'][^"']*tt[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;all(re,html).forEach(function(m){var id=abs(m[1]);if(seen.indexOf(id)>=0)return;seen.push(id);out.push({id:id,title:txt(m[2]),cover_url:'',rating:'10.0',views:'-'});});return out;}
 function imgs(html){var out=[],seen=[],re=/<img\b([^>]+)>/gi;all(re,html).forEach(function(m){var x=m[1].match(/(?:src|data-src|data-lazy-src)=["']([^"']+)["']/i);if(!x)return;var u=abs(x[1]).split('?')[0];if(!/\/(?:uploads\/manga-images|manga-images)\//i.test(u)||!/\.(jpg|jpeg|png|webp|avif|gif)$/i.test(u)||/logo|avatar|banner|promo|sponsor|favicon|Biolink|go\.linksaya|KOMIKDEWASA/i.test(u)||seen.indexOf(u)>=0)return;seen.push(u);out.push(u);});return out;}
 
-var KonmikExtension={
+ async function asDataUrl(url){var r=await fetch(url,{headers:HJSON});if(!r.ok)throw new Error('HTTP '+r.status);var b=await r.arrayBuffer(),a=new Uint8Array(b),s='';for(var i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return 'data:'+(r.headers.get('content-type')||'image/jpeg')+';base64,'+btoa(s);}
+
+ var KonmikExtension={
  getList:async function(page,query,filters){var u=BASE+'/?orderby=date';if(query)u=BASE+'/?s='+encodeURIComponent(String(query));var h=await getText(u);return{manga_list:cards(h)};},
  getDetail:async function(id){var h=await getText(abs(id)),tm=h.match(/<h1[^>]+class=["'][^"']*entry-title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i)||h.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i),dm=h.match(/<meta[^>]+(?:name|property)=["']og:description["'][^>]+content=["']([^"']+)/i),cm=h.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i),cs=[],seen=[];var re=/<a[^>]+href=["']([^"']*(?:chapter|ch)[^"']*)["'][^>]*>([\s\S]{0,700}?)<\/a>/gi;all(re,h).forEach(function(m){var x=abs(m[1]);if(seen.indexOf(x)>=0)return;seen.push(x);cs.push({id:x,title:txt(m[2])||'Chapter',date:'-'});});return{title:txt(tm?tm[1]:'Komik Dewasa'),cover_url:cm?abs(cm[1]):'',description:dm?txt(dm[1]):'Tidak ada deskripsi.',rating:'10.0',views:'-',genres:['Manga'],author:'Kreator',artist:'Kreator',chapters:cs};},
- getChapterImages:async function(id){var m=String(id||'').match(/\/([^/?#]+)\/?$/);if(!m)return [];var slug=m[1].toLowerCase();var x=slug.match(/^(.*?)-(chapter|chap|ch)[-_]?(\d[\d-]*)$/i);if(!x)return [];var series=x[1];var folder=x[2].toLowerCase()+'-'+x[3];var base='https://img6.linksaya.com/uploads/manga-images/'+series.charAt(0)+'/'+series+'/'+folder+'/';var proxy='https://8765-iiaadukf3hwc7c9d2dbdh-74d5472d.sg2.manus.computer/img/';var out=[];for(var i=1;i<=20;i++)out.push(proxy+encodeURIComponent(base+i+'.jpg'));return out;}
+ getChapterImages:async function(id){var m=String(id||'').match(/\/([^/?#]+)\/?$/);if(!m)return [];var slug=m[1].toLowerCase();var x=slug.match(/^(.*?)-(chapter|chap|ch)[-_]?(\d[\d-]*)$/i);if(!x)return [];var series=x[1],folder=x[2].toLowerCase()+'-'+x[3],base='https://img6.linksaya.com/uploads/manga-images/'+series.charAt(0)+'/'+series+'/'+folder+'/',urls=[];for(var i=1;i<=20;i++)urls.push(base+i+'.jpg');return await Promise.all(urls.map(asDataUrl));}
 };
