@@ -1,7 +1,7 @@
-// ID: ext_komikdewasa_html_compact
-// NAME: Komik Dewasa HTML (ID)
+// ID: ext_komikdewasa_html_fresh
+// NAME: Komik Dewasa Fresh (ID)
 // TYPE: comic
-// VERSION: 3.1.0
+// VERSION: 3.2.0
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
