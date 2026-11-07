@@ -1,16 +1,18 @@
-// ID: ext_komikdewasa_mom_v2
-// NAME: Komik Dewasa (ID)
+// ID: ext_komikdewasa_lite_v106
+// NAME: Komik Dewasa Lite (ID)
 // TYPE: comic
-// VERSION: 2.0.0
+// VERSION: 1.0.6
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
 
 const BASE = 'https://komikdewasa.mom';
 const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
     'Referer': BASE + '/',
-    'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8'
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Cache-Control': 'no-cache'
 };
 
 async function fetchHtml(url) {
@@ -158,18 +160,22 @@ var KonmikDewasaExtension = {
     },
 
     async getChapterImages(chapterUrl) {
-        var html = await fetchHtml(absoluteUrl(chapterUrl));
+        var html = await Promise.race([
+            fetchHtml(absoluteUrl(chapterUrl)),
+            new Promise(function (_, reject) { setTimeout(function () { reject(new Error('Timeout membaca chapter')); }, 15000); })
+        ]);
         var images = [];
-        var seen = {};
-        var imageRegex = /<img\b([^>]+)>/gi;
-        extractAll(imageRegex, html).forEach(function (m) {
-            var attrs = m[1];
-            var image = extractMatch(/(?:data-src|data-lazy-src|src)=["']([^"']+)["']/i, attrs, '');
-            var url = absoluteUrl(image, chapterUrl);
-            if (!url || seen[url]) return;
-            if (/KOMIKDEWASA|Biolink|sponsor|btn_close|histats|avatar|logo/i.test(url)) return;
-            if (!/chapter[-_\/]|manga-images|uploads/i.test(url)) return;
-            seen[url] = true;
+        var seen = [];
+        // Parser sederhana: baca satu tag img setiap kali, lalu ambil URL gambar upload.
+        var imageTagRegex = /<img\b([^>]+)>/gi;
+        extractAll(imageTagRegex, html).forEach(function (match) {
+            var urlMatch = match[1].match(/(?:src|data-src|data-lazy-src)=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp|avif|gif)(?:\?[^"']*)?)["']/i);
+            if (!urlMatch) return;
+            var url = urlMatch[1].split('?')[0];
+            if (/logo|avatar|sponsor|promosi|banner|favicon|KOMIKDEWASA/i.test(url)) return;
+            if (!/uploads|manga-images|chapter|komik/i.test(url)) return;
+            if (seen.indexOf(url) >= 0) return;
+            seen.push(url);
             images.push(url);
         });
         return images;
