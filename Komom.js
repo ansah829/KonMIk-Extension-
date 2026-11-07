@@ -1,7 +1,7 @@
-// ID: ext_komikdewasa_direct_reader
-// NAME: Komik Dewasa Direct Reader (ID)
+// ID: ext_komikdewasa_direct_reader_v51
+// NAME: Komik Dewasa Direct Reader 20 (ID)
 // TYPE: comic
-// VERSION: 5.0.0
+// VERSION: 5.1.0
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
@@ -20,5 +20,5 @@ function imgs(html){var out=[],seen=[],re=/<img\b([^>]+)>/gi;all(re,html).forEac
 var KonmikExtension={
  getList:async function(page,query,filters){var u=BASE+'/?orderby=date';if(query)u=BASE+'/?s='+encodeURIComponent(String(query));var h=await getText(u);return{manga_list:cards(h)};},
  getDetail:async function(id){var h=await getText(abs(id)),tm=h.match(/<h1[^>]+class=["'][^"']*entry-title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i)||h.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i),dm=h.match(/<meta[^>]+(?:name|property)=["']og:description["'][^>]+content=["']([^"']+)/i),cm=h.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i),cs=[],seen=[];var re=/<a[^>]+href=["']([^"']*(?:chapter|ch)[^"']*)["'][^>]*>([\s\S]{0,700}?)<\/a>/gi;all(re,h).forEach(function(m){var x=abs(m[1]);if(seen.indexOf(x)>=0)return;seen.push(x);cs.push({id:x,title:txt(m[2])||'Chapter',date:'-'});});return{title:txt(tm?tm[1]:'Komik Dewasa'),cover_url:cm?abs(cm[1]):'',description:dm?txt(dm[1]):'Tidak ada deskripsi.',rating:'10.0',views:'-',genres:['Manga'],author:'Kreator',artist:'Kreator',chapters:cs};},
- getChapterImages:async function(id){var m=String(id||'').match(/\/([^/?#]+)\/?$/);if(!m)return [];var slug=m[1].toLowerCase();var x=slug.match(/^(.*?)-(chapter|chap|ch)[-_]?(\d[\d-]*)$/i);if(!x)return [];var series=x[1];var folder=x[2].toLowerCase()+'-'+x[3];var base='https://img6.linksaya.com/uploads/manga-images/'+series.charAt(0)+'/'+series+'/'+folder+'/';var out=[];for(var i=1;i<=30;i++)out.push(base+i+'.jpg');return out;}
+ getChapterImages:async function(id){var m=String(id||'').match(/\/([^/?#]+)\/?$/);if(!m)return [];var slug=m[1].toLowerCase();var x=slug.match(/^(.*?)-(chapter|chap|ch)[-_]?(\d[\d-]*)$/i);if(!x)return [];var series=x[1];var folder=x[2].toLowerCase()+'-'+x[3];var base='https://img6.linksaya.com/uploads/manga-images/'+series.charAt(0)+'/'+series+'/'+folder+'/';var out=[];for(var i=1;i<=20;i++)out.push(base+i+'.jpg');return out;}
 };
