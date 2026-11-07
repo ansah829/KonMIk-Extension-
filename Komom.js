@@ -1,14 +1,14 @@
-// ID: ext_komikdewasa_wpapi_lite
+// ID: ext_komikdewasa_api_lite_v201
 // NAME: Komik Dewasa API Lite (ID)
 // TYPE: comic
-// VERSION: 2.0.0
+// VERSION: 2.0.1
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
 
-const BASE = 'https://komikdewasa.mom';
-const API = BASE + '/wp-json/wp/v2';
-const headers = {
+var BASE = 'https://komikdewasa.mom';
+var API = BASE + '/wp-json/wp/v2';
+var headers = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36',
     'Referer': BASE + '/',
     'Accept': 'application/json, text/plain, */*'
