@@ -1,183 +1,162 @@
-// ID: ext_komikdewasa_lite_v106
-// NAME: Komik Dewasa Lite (ID)
+// ID: ext_komikdewasa_wpapi_lite
+// NAME: Komik Dewasa API Lite (ID)
 // TYPE: comic
-// VERSION: 1.0.6
+// VERSION: 2.0.0
 // COLOR: #1E73BE
 // ICON: https://komikdewasa.mom/wp-content/uploads/2024/11/KOMIKDEWASA-1-1.png
 // REFERER: https://komikdewasa.mom/
 
 const BASE = 'https://komikdewasa.mom';
+const API = BASE + '/wp-json/wp/v2';
 const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36',
     'Referer': BASE + '/',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Cache-Control': 'no-cache'
+    'Accept': 'application/json, text/plain, */*'
 };
 
-async function fetchHtml(url) {
-    const res = await fetch(url, { headers: headers });
-    if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + url);
-    return await res.text();
+async function fetchJson(url) {
+    var response = await fetch(url, { headers: headers });
+    if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + url);
+    return await response.json();
 }
 
-function absoluteUrl(value, base) {
-    if (!value) return '';
-    var clean = value
-        .replace(/&#038;/g, '&')
-        .replace(/&amp;/g, '&')
-        .replace(/\\\//g, '/')
-        .trim();
-    if (/^https?:\/\//i.test(clean)) return clean;
-    if (/^\/\//.test(clean)) return 'https:' + clean;
-    if (clean.charAt(0) === '/') return BASE + clean;
-    return (base || BASE).replace(/\/$/, '') + '/' + clean.replace(/^\//, '');
-}
-
-function textOnly(value) {
-    return (value || '')
-        .replace(/<br\s*\/?>/gi, '\n')
+function htmlText(value) {
+    return String(value || '')
+        .replace(/<br\s*\/?\s*>/gi, ' ')
         .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
+        .replace(/&#038;|&amp;/gi, '&')
+        .replace(/&#039;|&#39;|&apos;/gi, "'")
         .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&apos;/gi, "'")
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/&amp;/gi, '&')
+        .replace(/&nbsp;/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
 
-function extractMatch(regex, html, fallback) {
-    var match = html.match(regex);
-    return match ? textOnly(match[1]) : (fallback || '');
+function abs(value) {
+    if (!value) return '';
+    var url = String(value).replace(/&amp;/g, '&').replace(/^http:\/\//i, 'https://');
+    if (/^https?:\/\//i.test(url)) return url;
+    return BASE + '/' + url.replace(/^\/+/, '');
 }
 
-function extractAll(regex, html) {
+function postTitle(post) {
+    return htmlText(post && post.title ? post.title.rendered : 'Unknown Title');
+}
+
+function postSlug(post) {
+    return String(post && post.slug ? post.slug : '').toLowerCase();
+}
+
+function seriesSlug(slug) {
+    return slug
+        .replace(/-(?:chapter|chap|ch)[-_]?\d+(?:[-_].*)?$/i, '')
+        .replace(/-(?:chapter|chap|ch)[-_]?\d+$/i, '');
+}
+
+function chapterNumber(title, slug) {
+    var match = String(title + ' ' + slug).match(/(?:chapter|chap|ch)[^0-9]*([0-9]+)/i);
+    return match ? parseFloat(match[1]) : 0;
+}
+
+function firstImage(html) {
+    var match = String(html || '').match(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["'][^>]*>/i);
+    return match ? abs(match[1]) : '';
+}
+
+function allImages(html) {
     var result = [];
+    var seen = [];
+    var regex = /<img\b([^>]+)>/gi;
     var match;
-    regex.lastIndex = 0;
-    while ((match = regex.exec(html)) !== null) result.push(match);
+    while ((match = regex.exec(String(html || ''))) !== null) {
+        var src = match[1].match(/(?:src|data-src|data-lazy-src)=["']([^"']+)["']/i);
+        if (!src) continue;
+        var url = abs(src[1]).split('?')[0];
+        if (!/\.(?:jpg|jpeg|png|webp|avif|gif)$/i.test(url)) continue;
+        if (/logo|avatar|banner|sponsor|promosi|favicon/i.test(url)) continue;
+        if (seen.indexOf(url) >= 0) continue;
+        seen.push(url);
+        result.push(url);
+    }
     return result;
 }
 
-function metaContent(html, key) {
-    var first = extractMatch(new RegExp('<meta[^>]+(?:property|name)=["\']' + key + '["\'][^>]+content=["\']([^"\']+)', 'i'), html, '');
-    if (first) return first;
-    return extractMatch(new RegExp('<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']' + key + '["\']', 'i'), html, '');
-}
-
-function stripImageQuery(url) {
-    return absoluteUrl(url).replace(/[?&](?:resize|fit|quality|ssl)=[^&]+/gi, '').replace(/[?&]$/, '');
-}
-
-function parseCards(html) {
-    var list = [];
-    var seen = {};
-    var cardRegex = /<div[^>]+class=["'][^"']*bsx[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
-
-    extractAll(cardRegex, html).forEach(function (card) {
-        var body = card[1];
-        var link = extractMatch(/<a[^>]+href=["']([^"']*\/komik\/[^"']+)["']/i, body, '');
-        if (!link) return;
-        var id = absoluteUrl(link);
-        if (seen[id]) return;
-        var title = extractMatch(/<div[^>]+class=["'][^"']*tt[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, body, '');
-        var image = extractMatch(/<img[^>]+(?:src|data-src)=["']([^"']+)["']/i, body, '');
-        var score = extractMatch(/<div[^>]+class=["'][^"']*numscore[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, body, '');
-        if (!title) title = extractMatch(/<a[^>]+title=["']([^"']+)["']/i, body, 'Unknown Title');
-        seen[id] = true;
-        list.push({
-            id: id,
-            title: title,
-            cover_url: stripImageQuery(image),
-            rating: score || '10.0',
-            views: '-'
-        });
-    });
-
-    // Fallback bila class kartu berubah: cari link komik, gambar, dan title terdekat.
-    if (!list.length) {
-        var fallbackRegex = /<a[^>]+href=["']([^"']*\/komik\/[^"']+)["'][\s\S]{0,2500}?<img[^>]+(?:src|data-src)=["']([^"']+)["'][\s\S]{0,1800}?<div[^>]+class=["'][^"']*tt[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
-        extractAll(fallbackRegex, html).forEach(function (m) {
-            var id = absoluteUrl(m[1]);
-            if (seen[id]) return;
-            seen[id] = true;
-            list.push({ id: id, title: textOnly(m[3]), cover_url: stripImageQuery(m[2]), rating: '10.0', views: '-' });
-        });
-    }
-    return list;
+function makeItem(slug, post) {
+    var title = postTitle(post).replace(/\s+(?:chapter|chap|ch)[^\d]*[\d.\-]+.*$/i, '').trim();
+    return {
+        id: BASE + '/komik/' + slug + '/',
+        title: title || postTitle(post),
+        cover_url: firstImage(post && post.content ? post.content.rendered : ''),
+        rating: '10.0',
+        views: '-'
+    };
 }
 
 var KonmikDewasaExtension = {
     async getList(page, query, filters) {
-        var currentPage = Math.max(1, parseInt(page || 1, 10));
-        var queryParts = [];
-        if (query) queryParts.push('s=' + encodeURIComponent(query));
-        if (currentPage > 1) queryParts.push('paged=' + encodeURIComponent(String(currentPage)));
-        var url = BASE + '/?' + (queryParts.length ? queryParts.join('&') : 'orderby=date');
-        var html = await fetchHtml(url);
-        return { manga_list: parseCards(html) };
+        var currentPage = parseInt(page || 1, 10);
+        if (!currentPage || currentPage < 1) currentPage = 1;
+        var url = API + '/posts?per_page=100&page=' + currentPage + '&orderby=date&order=desc';
+        if (query) url += '&search=' + encodeURIComponent(String(query));
+        var posts = await fetchJson(url);
+        var result = [];
+        var seen = [];
+        (Array.isArray(posts) ? posts : []).forEach(function (post) {
+            var slug = seriesSlug(postSlug(post));
+            if (!slug || seen.indexOf(slug) >= 0) return;
+            seen.push(slug);
+            result.push(makeItem(slug, post));
+        });
+        return { manga_list: result };
     },
 
     async getDetail(urlPath) {
-        var detailUrl = absoluteUrl(urlPath);
-        var html = await fetchHtml(detailUrl);
-        var title = extractMatch(/<h1[^>]+class=["'][^"']*entry-title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i, html, '') || metaContent(html, 'og:title').replace(/\s*-\s*komik Dewasa$/i, '');
-        var description = extractMatch(/<div[^>]+class=["'][^"']*entry-content-single[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, html, '') || metaContent(html, 'og:description') || 'Tidak ada deskripsi.';
-        var cover = stripImageQuery(metaContent(html, 'og:image') || extractMatch(/<img[^>]+itemprop=["']image["'][^>]+src=["']([^"']+)["']/i, html, ''));
-        var author = extractMatch(/<tr[^>]*>\s*<td>\s*Author\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i, html, '') || extractMatch(/itemprop=["']name["'][^>]*>([^<]+)</i, html, 'Kreator');
-        var genres = [];
-        extractAll(/<div[^>]+class=["'][^"']*seriestugenre[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, html).forEach(function (m) {
-            extractAll(/<a[^>]*>([^<]+)<\/a>/gi, m[1]).forEach(function (g) { genres.push(textOnly(g[1])); });
+        var raw = String(urlPath || '');
+        var match = raw.match(/\/komik\/([^/?#]+)/i);
+        var slug = match ? match[1] : raw.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '');
+        var searchWords = seriesSlug(slug).replace(/-/g, ' ').trim().split(/\s+/);
+        var search = searchWords[0] || seriesSlug(slug).replace(/-/g, ' ');
+        var posts = await fetchJson(API + '/posts?per_page=100&search=' + encodeURIComponent(search) + '&orderby=date&order=desc');
+        var filtered = (Array.isArray(posts) ? posts : []).filter(function (post) {
+            return seriesSlug(postSlug(post)) === seriesSlug(slug);
         });
-        if (!genres.length) genres.push('Manga');
-
-        var chapters = [];
-        // Parser dibatasi per tautan supaya HTML besar tidak memicu penggunaan memori berlebihan.
-        var chapterLinkRegex = /<a\b[^>]*href=["']([^"']*(?:chapter|ch)[^"']*)["'][^>]*>([\s\S]{0,900}?)<\/a>/gi;
-        extractAll(chapterLinkRegex, html).forEach(function (m) {
-            var id = absoluteUrl(m[1]);
-            var body = textOnly(m[2]);
-            var numberMatch = body.match(/(?:chapter|ch)\s*([\d.\-]+)/i) || m[1].match(/(?:chapter|ch)[^\d]*([\d.\-]+)/i);
-            var duplicate = chapters.some(function (c) { return c.id === id; });
-            if (!duplicate) chapters.push({ id: id, title: body || (numberMatch ? 'Chapter ' + numberMatch[1] : 'Chapter'), date: '-', number: numberMatch ? parseFloat(numberMatch[1]) : 0 });
+        if (!filtered.length) {
+            var recent = await fetchJson(API + '/posts?per_page=100&orderby=date&order=desc');
+            filtered = (Array.isArray(recent) ? recent : []).filter(function (post) {
+                return seriesSlug(postSlug(post)) === seriesSlug(slug);
+            });
+        }
+        var first = filtered[0] || {};
+        var title = postTitle(first).replace(/\s+(?:chapter|chap|ch)[^\d]*[\d.\-]+.*$/i, '').trim() || htmlText(slug.replace(/-/g, ' '));
+        var chapters = filtered.map(function (post) {
+            return {
+                id: post.link || (BASE + '/' + post.slug + '/'),
+                title: postTitle(post),
+                date: post.date || '-',
+                _number: chapterNumber(postTitle(post), postSlug(post))
+            };
         });
-        chapters.sort(function (a, b) { return b.number - a.number; });
-        chapters.forEach(function (c) { delete c.number; });
-
+        chapters.sort(function (a, b) { return b._number - a._number; });
+        chapters.forEach(function (chapter) { delete chapter._number; });
         return {
-            title: title || 'Unknown Title',
-            cover_url: cover,
-            description: description,
+            title: title,
+            cover_url: firstImage(first.content ? first.content.rendered : ''),
+            description: 'Komik Dewasa Bahasa Indonesia.',
             rating: '10.0',
             views: '-',
-            genres: genres,
-            author: author || 'Kreator',
-            artist: author || 'Kreator',
+            genres: ['Manga'],
+            author: 'Kreator',
+            artist: 'Kreator',
             chapters: chapters
         };
     },
 
     async getChapterImages(chapterUrl) {
-        var html = await Promise.race([
-            fetchHtml(absoluteUrl(chapterUrl)),
-            new Promise(function (_, reject) { setTimeout(function () { reject(new Error('Timeout membaca chapter')); }, 15000); })
-        ]);
-        var images = [];
-        var seen = [];
-        // Parser sederhana: baca satu tag img setiap kali, lalu ambil URL gambar upload.
-        var imageTagRegex = /<img\b([^>]+)>/gi;
-        extractAll(imageTagRegex, html).forEach(function (match) {
-            var urlMatch = match[1].match(/(?:src|data-src|data-lazy-src)=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp|avif|gif)(?:\?[^"']*)?)["']/i);
-            if (!urlMatch) return;
-            var url = urlMatch[1].split('?')[0];
-            if (/logo|avatar|sponsor|promosi|banner|favicon|KOMIKDEWASA/i.test(url)) return;
-            if (!/uploads|manga-images|chapter|komik/i.test(url)) return;
-            if (seen.indexOf(url) >= 0) return;
-            seen.push(url);
-            images.push(url);
-        });
-        return images;
+        var slugMatch = String(chapterUrl || '').match(/\/([^/?#]+)\/?(?:[?#].*)?$/);
+        var slug = slugMatch ? slugMatch[1] : '';
+        if (!slug) return [];
+        var posts = await fetchJson(API + '/posts?slug=' + encodeURIComponent(slug));
+        var post = Array.isArray(posts) ? posts[0] : null;
+        return post && post.content ? allImages(post.content.rendered) : [];
     }
 };
