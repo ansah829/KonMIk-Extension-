@@ -92,7 +92,7 @@ function makeItem(slug, post) {
     };
 }
 
-var KonmikDewasaExtension = {
+var KonmikExtension = {
     async getList(page, query, filters) {
         var currentPage = parseInt(page || 1, 10);
         if (!currentPage || currentPage < 1) currentPage = 1;
