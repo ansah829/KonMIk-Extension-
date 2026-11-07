@@ -1,7 +1,7 @@
-// ID: ext_komiku_id_v2
+// ID: ext_komiku_reader_fast
 // NAME: Komiku (ID)
 // TYPE: comic
-// VERSION: 1.0.1
+// VERSION: 1.0.2
 // COLOR: #4164B3
 // ICON: https://komiku.org/asset/img/ico.ico
 // REFERER: https://komiku.org/
@@ -200,28 +200,14 @@ var KonmikExtension = {
         const images = [];
         const seen = new Set();
 
-        const imageRegex = /<img\b([^>]*?(?:class=["'][^"']*(?:klazy|ww)[^"']*|alt=["'][^"']*(?:gambar|image)[^"']*)[^>]*)>/gi;
-        for (const m of extractAll(imageRegex, html)) {
-            const attrs = m[1];
-            const image = extractMatch(/(?:data-src|data-lazy-src|src)=["']([^"']+)["']/i, attrs);
-            const url = absoluteUrl(image, chapterUrl);
-            if (!url || /lazy\.jpg|promosi|avatar|google\.svg/i.test(url) || seen.has(url)) continue;
+        // Komiku memakai gambar halaman langsung dari img.komiku.org.
+        // Ambil hanya gambar upload chapter, bukan logo, iklan, avatar, atau SVG.
+        const directImageRegex = /<(?:img|source)\b[^>]*(?:src|data-src|data-lazy-src)=["'](https?:\/\/img\.komiku\.org\/[^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)["'][^>]*>/gi;
+        for (const m of extractAll(directImageRegex, html)) {
+            const url = m[1].split('?')[0];
+            if (!/\/upload\d*\//i.test(url) || seen.has(url)) continue;
             seen.add(url);
             images.push(url);
-        }
-
-        // Fallback: chapterData menyediakan jumlah gambar, sedangkan URL gambar
-        // tetap ditemukan dari markup img pada halaman pembaca.
-        if (!images.length) {
-            const genericImageRegex = /<img\b([^>]+)>/gi;
-            for (const m of extractAll(genericImageRegex, html)) {
-                const image = extractMatch(/(?:data-src|src)=["']([^"']+)["']/i, m[1]);
-                const url = absoluteUrl(image, chapterUrl);
-                if (url && /img\.komiku\./i.test(url) && !seen.has(url)) {
-                    seen.add(url);
-                    images.push(url);
-                }
-            }
         }
 
         return images;
