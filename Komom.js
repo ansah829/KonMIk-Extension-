@@ -36,14 +36,14 @@ function item(s,p) {
 }
 
 var KonmikExtension = {
-    async getList(page,query,filters) {
+    getList: async function(page,query,filters) {
         var u=API+'?per_page=100&orderby=date&order=desc';
         if(query) u+='&search='+encodeURIComponent(String(query));
         var ps=await getJson(u),out=[],seen=[];
         (ps||[]).forEach(function(p){var s=series(slugOf(p));if(s&&seen.indexOf(s)<0){seen.push(s);out.push(item(s,p));}});
         return {manga_list:out};
     },
-    async getDetail(id) {
+    getDetail: async function(id) {
         var m=String(id||'').match(/\/komik\/([^/?#]+)/i),s=m?m[1]:'';
         var word=series(s).replace(/-/g,' ').split(/\s+/)[0]||s;
         var ps=await getJson(API+'?per_page=100&search='+encodeURIComponent(word)+'&orderby=date&order=desc');
@@ -53,7 +53,7 @@ var KonmikExtension = {
         cs.forEach(function(c){c.n=c.n?parseFloat(c.n[1]):0;}); cs.sort(function(a,b){return b.n-a.n;}); cs.forEach(function(c){delete c.n;});
         return {title:titleOf(first).replace(/\s+(chapter|chap|ch)[^\d]*[\d.\-]+.*$/i,'')||text(s.replace(/-/g,' ')),cover_url:imageOf(first.content&&first.content.rendered),description:'Komik Dewasa Bahasa Indonesia.',rating:'10.0',views:'-',genres:['Manga'],author:'Kreator',artist:'Kreator',chapters:cs};
     },
-    async getChapterImages(id) {
+    getChapterImages: async function(id) {
         var m=String(id||'').match(/\/([^/?#]+)\/?$/); if(!m)return [];
         var ps=await getJson(API+'?slug='+encodeURIComponent(m[1]));
         return ps&&ps[0]&&ps[0].content?imagesOf(ps[0].content.rendered):[];
