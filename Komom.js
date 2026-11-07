@@ -13,7 +13,8 @@ var headers = {'User-Agent':'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 
 async function getJson(url) {
     var r = await fetch(url, {headers:headers});
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
+    var body = await r.text();
+    return JSON.parse(body);
 }
 function text(v) { return String(v || '').replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&#038;/g,'&').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim(); }
 function slugOf(p) { return String(p.slug || '').toLowerCase(); }
@@ -40,6 +41,7 @@ var KonmikExtension = {
         var u=API+'?per_page=100&orderby=date&order=desc';
         if(query) u+='&search='+encodeURIComponent(String(query));
         var ps=await getJson(u),out=[],seen=[];
+        if(!Array.isArray(ps)) ps=[];
         (ps||[]).forEach(function(p){var s=series(slugOf(p));if(s&&seen.indexOf(s)<0){seen.push(s);out.push(item(s,p));}});
         return {manga_list:out};
     },
@@ -47,8 +49,9 @@ var KonmikExtension = {
         var m=String(id||'').match(/\/komik\/([^/?#]+)/i),s=m?m[1]:'';
         var word=series(s).replace(/-/g,' ').split(/\s+/)[0]||s;
         var ps=await getJson(API+'?per_page=100&search='+encodeURIComponent(word)+'&orderby=date&order=desc');
-        ps=(ps||[]).filter(function(p){return series(slugOf(p))===series(s);});
-        if(!ps.length){var recent=await getJson(API+'?per_page=100&orderby=date&order=desc');ps=(recent||[]).filter(function(p){return series(slugOf(p))===series(s);});}
+        if(!Array.isArray(ps)) ps=[];
+        ps=ps.filter(function(p){return series(slugOf(p))===series(s);});
+        if(!ps.length){var recent=await getJson(API+'?per_page=100&orderby=date&order=desc');if(!Array.isArray(recent))recent=[];ps=recent.filter(function(p){return series(slugOf(p))===series(s);});}
         var first=ps[0]||{},cs=ps.map(function(p){return{id:p.link||BASE+'/'+p.slug+'/',title:titleOf(p),date:p.date||'-',n:(titleOf(p)+' '+slugOf(p)).match(/(?:chapter|chap|ch)[^0-9]*([0-9]+)/i)};});
         cs.forEach(function(c){c.n=c.n?parseFloat(c.n[1]):0;}); cs.sort(function(a,b){return b.n-a.n;}); cs.forEach(function(c){delete c.n;});
         return {title:titleOf(first).replace(/\s+(chapter|chap|ch)[^\d]*[\d.\-]+.*$/i,'')||text(s.replace(/-/g,' ')),cover_url:imageOf(first.content&&first.content.rendered),description:'Komik Dewasa Bahasa Indonesia.',rating:'10.0',views:'-',genres:['Manga'],author:'Kreator',artist:'Kreator',chapters:cs};
@@ -56,6 +59,6 @@ var KonmikExtension = {
     getChapterImages: async function(id) {
         var m=String(id||'').match(/\/([^/?#]+)\/?$/); if(!m)return [];
         var ps=await getJson(API+'?slug='+encodeURIComponent(m[1]));
-        return ps&&ps[0]&&ps[0].content?imagesOf(ps[0].content.rendered):[];
+        return Array.isArray(ps)&&ps[0]&&ps[0].content?imagesOf(ps[0].content.rendered):[];
     }
 };
