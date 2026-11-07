@@ -1,7 +1,7 @@
-// ID: ext_komiku_reader_v104
+// ID: ext_komiku_reader_v105
 // NAME: Komiku Reader (ID)
 // TYPE: comic
-// VERSION: 1.0.4
+// VERSION: 1.0.5
 // COLOR: #4164B3
 // ICON: https://komiku.org/asset/img/ico.ico
 // REFERER: https://komiku.org/
@@ -196,7 +196,12 @@ var KonmikExtension = {
     },
 
     async getChapterImages(chapterUrl) {
-        const html = await fetchHtml(absoluteUrl(chapterUrl));
+        const html = await Promise.race([
+            fetchHtml(absoluteUrl(chapterUrl)),
+            new Promise(function (_, reject) {
+                setTimeout(function () { reject(new Error('Timeout membaca chapter Komiku')); }, 15000);
+            })
+        ]);
         const images = [];
         const seen = new Set();
 
